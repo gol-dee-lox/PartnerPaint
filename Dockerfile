@@ -1,14 +1,12 @@
-# Use stable OpenJDK base image
-FROM eclipse-temurin:17-jdk
-
-# Set working directory inside container
+# ---- Build Stage ----
+FROM gradle:8.2.1-jdk17 AS build
 WORKDIR /app
+COPY . .
+RUN gradle bootJar
 
-# Copy your built fat jar into container
-COPY build/libs/GridServerFinalClean-0.0.1-SNAPSHOT.jar app.jar
-
-# Expose port 8080 (standard Spring Boot port)
+# ---- Production Stage ----
+FROM eclipse-temurin:17-jdk
+WORKDIR /app
+COPY --from=build /app/build/libs/GridServerFinalClean-0.0.1-SNAPSHOT.jar app.jar
 EXPOSE 8080
-
-# Run Spring Boot application
 ENTRYPOINT ["java", "-jar", "app.jar"]
