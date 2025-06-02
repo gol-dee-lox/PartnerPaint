@@ -2,7 +2,7 @@
 FROM gradle:8.2.1-jdk17 AS build
 WORKDIR /app
 COPY . .
-RUN gradle bootJar
+RUN gradle bootJar --no-daemon --warning-mode all
 
 # ---- Production Stage ----
 FROM eclipse-temurin:17-jdk
