@@ -18,7 +18,7 @@ const backendUrl = isLocal
   : "https://partnerpaint2.onrender.com";
 
 const wsUrl = isLocal
-  ? "wss://localhost:8080/ws"
+  ? "ws://localhost:8080/ws"
   : "wss://partnerpaint2.onrender.com/ws";
 </script>
 
@@ -422,9 +422,15 @@ async function modifyCell(gx, gy, direction) {
     //console.log("🔥 Preparing to call backend with:", gx, gy, newColor);
 
     try {
+//        const response = await fetch(`${backendUrl}/cell/${gx}/${gy}`, {
+//            method: "POST",
+//            headers: { "Content-Type": "text/plain" },
+//            body: JSON.stringify({ color: newColor })
+//        });
+        
         const response = await fetch(`${backendUrl}/cell/${gx}/${gy}`, {
             method: "POST",
-            headers: { "Content-Type": "text/plain" },
+            headers: { "Content-Type": "application/json" },
             body: JSON.stringify({ color: newColor })
         });
 
