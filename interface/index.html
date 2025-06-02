@@ -1,0 +1,216 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <title>Infinite Grid</title>
+    <style>
+        body { margin: 0; overflow: hidden; background: #222; }
+        canvas { display: block; }
+    </style>
+</head>
+<body>
+<canvas id="grid"></canvas>
+
+<div id="coordinateDisplay" style="
+    position: fixed;
+    top: 10px;
+    right: 10px;
+    padding: 8px 12px;
+    background: rgba(0, 0, 0, 0.7);
+    color: #fff;
+    font-family: monospace;
+    border-radius: 6px;
+    z-index: 10;
+    font-size: 14px;">
+    (0, 0)
+</div>
+
+<script>
+const backendUrl = "http://localhost:8080";
+const cellSize = 40;
+const colors = [
+    "#FF0000", "#FFA500", "#FFFF00", "#00FF00", "#00FFFF",
+    "#0000FF", "#8B00FF", "#FF1493", "#FF6347", "#FFD700",
+    "#ADFF2F", "#7CFC00", "#00CED1", "#1E90FF", "#4B0082",
+    "#FF69B4", "#DC143C", "#FF4500", "#32CD32", "#00BFFF"
+];
+const defaultColor = "#333333";
+
+let zoom = 1;
+let minZoom = 0.1;
+let offsetX = 0;
+let offsetY = 0;
+let isDragging = false;
+let dragStart = { x: 0, y: 0 };
+let dragDistance = 0;
+let pendingClick = null;
+const chunkSize = 20;
+const cache = new Map();
+
+const canvas = document.getElementById('grid');
+const ctx = canvas.getContext('2d');
+
+// Resize handling
+function resize() {
+    canvas.width = window.innerWidth;
+    canvas.height = window.innerHeight;
+    minZoom = Math.min(window.innerWidth, window.innerHeight) / (cellSize * 50);
+    fetchAndRender();
+}
+window.addEventListener('resize', resize);
+resize();
+
+canvas.addEventListener("mousedown", e => {
+    if (e.button === 0 || e.button === 2) {
+        pendingClick = { button: e.button, x: e.offsetX, y: e.offsetY };
+        isDragging = true;
+        dragStart.x = e.clientX;
+        dragStart.y = e.clientY;
+        dragDistance = 0;
+    }
+});
+
+canvas.addEventListener("mousemove", e => {
+    if (isDragging) {
+        const dx = e.clientX - dragStart.x;
+        const dy = e.clientY - dragStart.y;
+        dragDistance += Math.abs(dx) + Math.abs(dy);
+
+        offsetX += dx / zoom;
+        offsetY += dy / zoom;
+        dragStart.x = e.clientX;
+        dragStart.y = e.clientY;
+
+        render();  // <-- Smoothly redraws as you drag
+    }
+});
+
+canvas.addEventListener("mouseup", () => {
+    isDragging = false;
+
+    if (pendingClick && dragDistance < 5) {
+        const { button, x, y } = pendingClick;
+        const [gx, gy] = screenToGrid(x, y);
+        modifyCell(gx, gy, button === 0 ? 1 : -1);
+    } else {
+        render();  // Immediate visual stability when releasing drag
+    }
+
+    pendingClick = null;
+
+    // Instead of calling fetchAndRender() directly, split:
+    requestAnimationFrame(() => fetchAndRender());
+});
+
+canvas.addEventListener("mouseleave", () => { isDragging = false; pendingClick = null; });
+canvas.addEventListener("contextmenu", e => e.preventDefault());
+
+canvas.addEventListener("wheel", e => {
+    e.preventDefault();
+    zoom *= e.deltaY > 0 ? 0.9 : 1.1;
+    zoom = Math.min(Math.max(zoom, minZoom), 5);
+    requestAnimationFrame(render);
+    fetchAndRender();
+}, { passive: false });
+
+function screenToGrid(sx, sy) {
+    return [
+        Math.floor((sx / zoom - offsetX) / cellSize),
+        Math.floor((sy / zoom - offsetY) / cellSize)
+    ];
+}
+
+function gridToScreen(gx, gy) {
+    return [
+        (gx * cellSize + offsetX) * zoom,
+        (gy * cellSize + offsetY) * zoom
+    ];
+}
+
+async function modifyCell(gx, gy, direction) {
+    const key = `${gx},${gy}`;
+    const currentColor = cache.get(key) || defaultColor;
+    let idx = colors.indexOf(currentColor);
+    if (idx === -1) idx = -1;
+
+    idx = (idx + direction + colors.length) % colors.length;
+    const newColor = colors[idx];
+
+    cache.set(key, newColor);
+    render();
+
+    await fetch(`${backendUrl}/cell/${gx}/${gy}`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(newColor)
+    });
+}
+
+async function loadChunk(cx, cy) {
+    const x1 = cx * chunkSize;
+    const y1 = cy * chunkSize;
+    const x2 = x1 + chunkSize - 1;
+    const y2 = y1 + chunkSize - 1;
+    const url = `${backendUrl}/cells?x1=${x1}&y1=${y1}&x2=${x2}&y2=${y2}`;
+
+    const response = await fetch(url);
+    const data = await response.json();
+
+    for (const key in data) {
+        cache.set(key, data[key]);
+    }
+}
+
+async function fetchAndRender() {
+    const cols = Math.ceil(canvas.width / (cellSize * zoom)) + 2;
+    const rows = Math.ceil(canvas.height / (cellSize * zoom)) + 2;
+    const gx0 = Math.floor(-offsetX / cellSize);
+    const gy0 = Math.floor(-offsetY / cellSize);
+
+    const chunkPromises = [];
+    for (let dx = -1; dx <= cols; dx += chunkSize) {
+        for (let dy = -1; dy <= rows; dy += chunkSize) {
+            const cx = Math.floor((gx0 + dx) / chunkSize);
+            const cy = Math.floor((gy0 + dy) / chunkSize);
+            const chunkKey = `chunk:${cx},${cy}`;
+            if (!cache.has(chunkKey)) {
+                cache.set(chunkKey, true);
+                chunkPromises.push(loadChunk(cx, cy));
+            }
+        }
+    }
+    await Promise.all(chunkPromises);
+
+    requestAnimationFrame(render);  // smoother guaranteed re-draw
+}
+
+function render() {
+    ctx.clearRect(0, 0, canvas.width, canvas.height);
+
+    const cols = Math.ceil(canvas.width / (cellSize * zoom)) + 2;
+    const rows = Math.ceil(canvas.height / (cellSize * zoom)) + 2;
+    const gx0 = Math.floor(-offsetX / cellSize);
+    const gy0 = Math.floor(-offsetY / cellSize);
+
+    for (let dx = -1; dx <= cols; dx++) {
+        for (let dy = -1; dy <= rows; dy++) {
+            const gx = gx0 + dx;
+            const gy = gy0 + dy;
+            const key = `${gx},${gy}`;
+            const color = cache.get(key) || defaultColor;
+
+            const [sx, sy] = gridToScreen(gx, gy);
+            const size = cellSize * zoom;
+            ctx.fillStyle = color;
+            ctx.fillRect(sx, sy, size, size);
+            ctx.strokeStyle = "#444";
+            ctx.strokeRect(sx, sy, size, size);
+        }
+    }
+}
+
+// Draw immediately on page load:
+window.onload = () => fetchAndRender();
+</script>
+</body>
+</html>

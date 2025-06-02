@@ -1,0 +1,25 @@
+# Ignore build outputs
+/build/
+bin/
+out/
+
+# Ignore IDE files
+*.iml
+.idea/
+*.class
+
+# Ignore OS files
+.DS_Store
+Thumbs.db
+
+# Ignore dependency caches
+.gradle/
+
+# Ignore logs
+*.log
+
+# Ignore temp files
+*.tmp
+
+# Optional: ignore local secrets (ONLY if you want)
+application-local.properties
