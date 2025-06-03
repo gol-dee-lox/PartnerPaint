@@ -1,16 +1,11 @@
 # ---- Build Stage ----
 FROM eclipse-temurin:21-jdk AS build
 
-# Install Gradle manually
-RUN apt-get update && \
-    apt-get install -y wget unzip && \
-    wget https://services.gradle.org/distributions/gradle-8.2.1-bin.zip && \
-    unzip gradle-8.2.1-bin.zip -d /opt && \
-    ln -s /opt/gradle-8.2.1/bin/gradle /usr/bin/gradle
-
 WORKDIR /app
 COPY . .
-RUN gradle bootJar --no-daemon --warning-mode all
+
+# Use gradle wrapper for build
+RUN ./gradlew bootJar --no-daemon --warning-mode all
 
 # ---- Production Stage ----
 FROM eclipse-temurin:21-jdk
