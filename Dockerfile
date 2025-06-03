@@ -1,11 +1,10 @@
 # ---- Build Stage ----
-FROM eclipse-temurin:21-jdk AS build
+FROM gradle:8.2.1-jdk21 AS build
 
 WORKDIR /app
 COPY . .
 
-# Use gradle wrapper for build
-RUN ./gradlew bootJar --warning-mode all
+RUN gradle bootJar -i --stacktrace
 
 # ---- Production Stage ----
 FROM eclipse-temurin:21-jdk
