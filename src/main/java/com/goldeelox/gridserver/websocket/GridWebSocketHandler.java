@@ -73,16 +73,40 @@ public class GridWebSocketHandler implements WebSocketHandler {
 //
 //        return Mono.when(input, output);
     	
-    	@Override
-    	public Mono<Void> handle(WebSocketSession session) {
-    	    String id = String.valueOf(idCounter.getAndIncrement());
-    	    sessions.put(id, session);
-    	    System.out.println("✅ Assigned player ID: " + id);
+    @Override
+    public Mono<Void> handle(WebSocketSession session) {
+        String id = String.valueOf(idCounter.getAndIncrement());
+        sessions.put(id, session);
+        System.out.println("✅ Assigned player ID: " + id);
 
-    	    WebSocketMessage testMessage = session.textMessage("{\"type\":\"testPing\",\"value\":\"helloWorld\"}");
+        // Send the initial assignId message immediately
+        Mono<WebSocketMessage> initialAssignId = Mono.just(
+            session.textMessage("{\"type\":\"assignId\",\"id\":\"" + id + "\"}")
+        );
 
-    	    return session.send(Mono.just(testMessage));
-    	}
+        // Global broadcast stream is handled separately -- no need to concat here
+        // We'll push broadcastSink messages to sessions via global subscription elsewhere
+
+        // Send initial assignId message immediately
+        Mono<Void> output = session.send(initialAssignId);
+
+        // Process incoming messages
+        Flux<String> receiveFlux = session.receive()
+                .map(WebSocketMessage::getPayloadAsText)
+                .doOnNext(message -> {
+                    System.out.println("📩 Incoming message for id " + id + ": " + message);
+                    handleMessage(id, message);
+                })
+                .doOnError(e -> e.printStackTrace())
+                .doFinally(sig -> {
+                    System.out.println("⚠️ Closing session for id " + id);
+                    sessions.remove(id);
+                    players.remove(id);
+                    broadcastPlayerDisconnect(id);
+                });
+
+        return Mono.when(output, receiveFlux.then());
+    }
 
     private void handleMessage(String id, String message) {
         try {
