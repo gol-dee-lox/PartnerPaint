@@ -5,7 +5,7 @@ WORKDIR /app
 COPY . .
 
 # Use gradle wrapper for build
-RUN ./gradlew bootJar --no-daemon --warning-mode all
+RUN ./gradlew bootJar --warning-mode all
 
 # ---- Production Stage ----
 FROM eclipse-temurin:21-jdk
