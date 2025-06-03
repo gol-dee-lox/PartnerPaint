@@ -22,6 +22,12 @@ public class CellController {
         this.redisService = redisService;
         this.websocketHandler = websocketHandler;
     }
+    
+    @GetMapping("/cells")
+    public Map<String, String> getCells(@RequestParam int x1, @RequestParam int y1,
+                                        @RequestParam int x2, @RequestParam int y2) {
+        return redisService.getCellsInArea(x1, y1, x2, y2);
+    }
 
     @PostMapping("/cell/{x}/{y}")
     public Mono<Void> updateCell(@PathVariable("x") int x, @PathVariable("y") int y, @RequestBody(required = false) String color) {
