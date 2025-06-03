@@ -57,6 +57,7 @@ public class RedisService {
                 result.put(formatKey(keys.get(i)), value);
             }
         }
+        System.out.println("Redis returned: " + result);
         return result;
     }
 
@@ -65,6 +66,6 @@ public class RedisService {
     }
 
     private String formatKey(String fullKey) {
-        return fullKey.replace("cell:", "")/*.replace(":", ",")*/;
+        return fullKey.replace("cell:", "").replace(":", ",");
     }
 }
