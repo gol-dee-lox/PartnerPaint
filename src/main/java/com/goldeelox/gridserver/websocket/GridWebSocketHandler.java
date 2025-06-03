@@ -20,13 +20,17 @@ public class GridWebSocketHandler implements WebSocketHandler {
     private final AtomicLong idCounter = new AtomicLong(1);
 
     public GridWebSocketHandler() {
-        // Global fanout subscription — delivers broadcastSink messages to all connected sessions
+        // Global fanout subscription — fully safe broadcast delivery with error handling
         broadcastSink.asFlux().subscribe(message -> {
-            sessions.forEach((id, session) -> {
-                if (session.isOpen()) {
-                    session.send(Mono.just(session.textMessage(message))).subscribe();
-                }
-            });
+            Flux.fromIterable(sessions.values())
+                .filter(WebSocketSession::isOpen)
+                .flatMap(session -> session.send(Mono.just(session.textMessage(message)))
+                    .doOnError(e -> {
+                        System.err.println("❌ Failed to send to session: " + e.getMessage());
+                        e.printStackTrace();
+                    })
+                )
+                .subscribe();
         });
     }
 
@@ -36,11 +40,13 @@ public class GridWebSocketHandler implements WebSocketHandler {
         sessions.put(id, session);
         System.out.println("✅ Assigned player ID: " + id);
 
+        // Outbound stream: assignId emits immediately, Flux.never() holds stream open
         Flux<WebSocketMessage> outbound = Flux.concat(
             Mono.just(session.textMessage("{\"type\":\"assignId\",\"id\":\"" + id + "\"}")),
-            Flux.never()  // Keeps outbound open; fully separate from broadcast sink
+            Flux.never()
         );
 
+        // Handle incoming messages
         Flux<String> receiveFlux = session.receive()
                 .map(WebSocketMessage::getPayloadAsText)
                 .doOnNext(message -> {
