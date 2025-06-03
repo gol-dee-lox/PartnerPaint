@@ -36,14 +36,11 @@ public class GridWebSocketHandler implements WebSocketHandler {
         sessions.put(id, session);
         System.out.println("✅ Assigned player ID: " + id);
 
-        // Send assignId immediately
-        Mono<WebSocketMessage> assignIdMessage = Mono.just(
-            session.textMessage("{\"type\":\"assignId\",\"id\":\"" + id + "\"}")
+        Flux<WebSocketMessage> outbound = Flux.concat(
+            Mono.just(session.textMessage("{\"type\":\"assignId\",\"id\":\"" + id + "\"}")),
+            Flux.never()  // Keeps outbound open; fully separate from broadcast sink
         );
 
-        Mono<Void> outbound = session.send(assignIdMessage);
-
-        // Handle incoming messages
         Flux<String> receiveFlux = session.receive()
                 .map(WebSocketMessage::getPayloadAsText)
                 .doOnNext(message -> {
@@ -58,7 +55,7 @@ public class GridWebSocketHandler implements WebSocketHandler {
                     broadcastPlayerDisconnect(id);
                 });
 
-        return Mono.when(outbound, receiveFlux.then());
+        return Mono.when(session.send(outbound), receiveFlux.then());
     }
 
     private void handleMessage(String id, String message) {
