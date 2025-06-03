@@ -83,7 +83,6 @@ public class GridWebSocketHandler implements WebSocketHandler {
 
     	    return session.send(Mono.just(testMessage));
     	}
-    }
 
     private void handleMessage(String id, String message) {
         try {
