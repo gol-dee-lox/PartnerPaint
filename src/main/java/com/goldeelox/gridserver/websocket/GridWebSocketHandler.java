@@ -31,7 +31,13 @@ public class GridWebSocketHandler implements WebSocketHandler {
     //}
     
     public GridWebSocketHandler() {
-    	
+        broadcastSink.asFlux().subscribe(message -> {
+            sessions.forEach((id, session) -> {
+                if (session.isOpen()) {
+                    session.send(Mono.just(session.textMessage(message))).subscribe();
+                }
+            });
+        });
     }
 
     @Override
@@ -67,6 +73,7 @@ public class GridWebSocketHandler implements WebSocketHandler {
 
     private void handleMessage(String id, String message) {
         try {
+        	System.out.println("Received message from client: " + message);
             Map<String, Object> payload = objectMapper.readValue(message, Map.class);
             String type = (String) payload.get("type");
 
@@ -86,7 +93,9 @@ public class GridWebSocketHandler implements WebSocketHandler {
                 update.put("y", y);
 
                 String json = objectMapper.writeValueAsString(update);
+                System.out.println("Parsed position payload: username=" + username + ", x=" + x + ", y=" + y);
                 //System.out.println("✅ Broadcasting positionUpdate: " + json);
+                System.out.println("Broadcasting positionUpdate: " + json);
                 broadcastSink.tryEmitNext(json);
                 //System.out.println("🚀 Broadcasting to all: " + json);
             }
