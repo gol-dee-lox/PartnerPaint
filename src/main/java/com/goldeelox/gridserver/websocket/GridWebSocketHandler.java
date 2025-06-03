@@ -139,4 +139,15 @@ public class GridWebSocketHandler implements WebSocketHandler {
     public void broadcastCellUpdate(String message) {
         broadcastSink.tryEmitNext(message);
     }
+    
+    public Mono<Boolean> ping() {
+        return redisTemplate.getConnectionFactory().getReactiveConnection()
+                .ping()
+                .doOnNext(pong -> System.out.println("✅ Redis PING response: " + pong))
+                .map(pong -> pong.equalsIgnoreCase("PONG"))
+                .onErrorResume(e -> {
+                    System.err.println("❌ Redis PING failed: " + e.getMessage());
+                    return Mono.just(false);
+                });
+    }
 }

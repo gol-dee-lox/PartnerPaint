@@ -45,4 +45,15 @@ public class RedisService {
     private String formatKey(int x, int y) {
         return x + "," + y;  // This is how the frontend expects keys.
     }
+    
+    public Mono<Boolean> ping() {
+        return redisTemplate.getConnectionFactory().getReactiveConnection()
+                .ping()
+                .doOnNext(pong -> System.out.println("✅ Redis PING response: " + pong))
+                .map(pong -> pong.equalsIgnoreCase("PONG"))
+                .onErrorResume(e -> {
+                    System.err.println("❌ Redis PING failed: " + e.getMessage());
+                    return Mono.just(false);
+                });
+    }
 }
