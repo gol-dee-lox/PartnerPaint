@@ -50,7 +50,7 @@ public class GridWebSocketHandler implements WebSocketHandler {
         Flux<String> receiveFlux = session.receive()
                 .map(WebSocketMessage::getPayloadAsText)
                 .doOnNext(message -> {
-                    System.out.println("📩 Incoming message for id " + id + ": " + message);
+                    System.out.println("⚠️ RAW message received from client: " + message);
                     handleMessage(id, message);
                 })
                 .doOnError(e -> e.printStackTrace())
