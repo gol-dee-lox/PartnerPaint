@@ -3,7 +3,7 @@ package com.goldeelox.gridserver.websocket;
 import com.fasterxml.jackson.databind.ObjectMapper;
 
 import org.springframework.beans.factory.annotation.Autowired;
-import org.springframework.data.redis.core.ReactiveStringRedisTemplate;
+//import org.springframework.data.redis.core.ReactiveStringRedisTemplate;
 import org.springframework.stereotype.Component;
 import org.springframework.web.reactive.socket.*;
 import org.springframework.web.reactive.socket.WebSocketHandler;
@@ -23,11 +23,15 @@ public class GridWebSocketHandler implements WebSocketHandler {
     private final Sinks.Many<String> broadcastSink = Sinks.many().multicast().directBestEffort();
 
     private final AtomicLong idCounter = new AtomicLong(1);
-    private final ReactiveStringRedisTemplate redisTemplate;
+    //private final ReactiveStringRedisTemplate redisTemplate;
     
-    @Autowired
-    public GridWebSocketHandler(ReactiveStringRedisTemplate redisTemplate) {
-        this.redisTemplate = redisTemplate;
+    //@Autowired
+    //public GridWebSocketHandler(ReactiveStringRedisTemplate redisTemplate) {
+        //this.redisTemplate = redisTemplate;
+    //}
+    
+    public GridWebSocketHandler() {
+    	
     }
 
     @Override
@@ -138,16 +142,5 @@ public class GridWebSocketHandler implements WebSocketHandler {
     
     public void broadcastCellUpdate(String message) {
         broadcastSink.tryEmitNext(message);
-    }
-    
-    public Mono<Boolean> ping() {
-        return redisTemplate.getConnectionFactory().getReactiveConnection()
-                .ping()
-                .doOnNext(pong -> System.out.println("✅ Redis PING response: " + pong))
-                .map(pong -> pong.equalsIgnoreCase("PONG"))
-                .onErrorResume(e -> {
-                    System.err.println("❌ Redis PING failed: " + e.getMessage());
-                    return Mono.just(false);
-                });
     }
 }
