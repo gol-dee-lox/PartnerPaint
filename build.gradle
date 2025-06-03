@@ -18,6 +18,7 @@ tasks.withType(JavaCompile) {
 }
 
 dependencies {
+	implementation 'redis.clients:jedis:5.1.0'
     implementation 'org.springframework.boot:spring-boot-starter-webflux'
     implementation 'org.springframework.boot:spring-boot-starter-websocket'
     implementation 'org.springframework.boot:spring-boot-starter-actuator'

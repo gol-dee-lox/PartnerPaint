@@ -1,80 +1,69 @@
 package com.goldeelox.gridserver.service;
 
-import org.springframework.beans.factory.annotation.Value;
-import org.springframework.http.HttpHeaders;
-import org.springframework.stereotype.Service;
-import org.springframework.web.reactive.function.client.WebClient;
-import reactor.core.publisher.Flux;
-import reactor.core.publisher.Mono;
 import com.goldeelox.gridserver.model.Cell;
+import org.springframework.stereotype.Service;
+import redis.clients.jedis.JedisPooled;
 
-import java.util.Map;
-import java.util.stream.Collectors;
+import java.net.URI;
+import java.net.URISyntaxException;
+import java.util.*;
 
 @Service
 public class RedisService {
 
-    private final WebClient webClient;
+    private JedisPooled jedis;
 
-    public RedisService(
-            @Value("${UPSTASH_REDIS_REST_URL}") String redisUrl,
-            @Value("${UPSTASH_REDIS_REST_TOKEN}") String redisToken) {
-        if (redisUrl == null || redisUrl.isBlank() || redisToken == null || redisToken.isBlank()) {
-            throw new IllegalStateException("Missing required Redis env vars");
+    public RedisService() {
+    	jedis=new JedisPooled("");
+        // Read from your Render env vars:
+        String redisUrl = System.getenv("REDIS_URL");
+        String redisToken = System.getenv("REDIS_TOKEN");
+
+        if (redisUrl == null || redisToken == null) {
+            throw new IllegalStateException("Missing Redis env vars");
         }
-        this.webClient = WebClient.builder()
-                .baseUrl(redisUrl)
-                .defaultHeader(HttpHeaders.AUTHORIZATION, redisToken)
-                .build();
+
+        URI uri;
+		try {
+			uri = new URI(redisUrl);
+			this.jedis = new JedisPooled(uri);
+		} catch (URISyntaxException e) {
+			// TODO Auto-generated catch block
+			e.printStackTrace();
+		}
+        
     }
 
-    public Mono<Void> saveCell(Cell cell) {
+    public void saveCell(Cell cell) {
         String key = getKey(cell.getX(), cell.getY());
-        return webClient.post()
-                .uri(uriBuilder -> uriBuilder.path("/set/{key}/{value}")
-                        .build(key, cell.getColor()))
-                .retrieve()
-                .bodyToMono(String.class)
-                .then();
+        jedis.set(key, cell.getColor());
     }
 
-    public Mono<Map<String, String>> getCellsInArea(int x1, int y1, int x2, int y2) {
-        return Flux.range(x1, x2 - x1 + 1)
-                .flatMap(x -> Flux.range(y1, y2 - y1 + 1)
-                        .flatMap(y -> {
-                            String key = getKey(x, y);
-                            return webClient.get()
-                                    .uri(uriBuilder -> uriBuilder.path("/get/{key}").build(key))
-                                    .retrieve()
-                                    .bodyToMono(String.class)
-                                    .map(value -> Map.entry(formatKey(x, y), parseUpstashValue(value)))
-                                    .defaultIfEmpty(Map.entry(formatKey(x, y), null));
-                        }))
-                .collect(Collectors.toMap(Map.Entry::getKey, Map.Entry::getValue));
-    }
+    public Map<String, String> getCellsInArea(int x1, int y1, int x2, int y2) {
+        List<String> keys = new ArrayList<>();
+        for (int x = x1; x <= x2; x++) {
+            for (int y = y1; y <= y2; y++) {
+                keys.add(getKey(x, y));
+            }
+        }
 
-    private String parseUpstashValue(String response) {
-        if (response == null) return null;
-        return response.replace("\"", "");
+        List<String> values = jedis.mget(keys.toArray(new String[0]));
+
+        Map<String, String> result = new HashMap<>();
+        for (int i = 0; i < keys.size(); i++) {
+            String value = values.get(i);
+            if (value != null) {
+                result.put(formatKey(keys.get(i)), value);
+            }
+        }
+        return result;
     }
 
     private String getKey(int x, int y) {
         return "cell:" + x + ":" + y;
     }
 
-    private String formatKey(int x, int y) {
-        return x + "," + y;
-    }
-
-    public Mono<Boolean> ping() {
-        return webClient.get()
-                .uri("/ping")
-                .retrieve()
-                .bodyToMono(String.class)
-                .map(pong -> pong.equalsIgnoreCase("PONG"))
-                .onErrorResume(e -> {
-                    System.err.println("❌ Redis PING failed: " + e.getMessage());
-                    return Mono.just(false);
-                });
+    private String formatKey(String fullKey) {
+        return fullKey.replace("cell:", "").replace(":", ",");
     }
 }
