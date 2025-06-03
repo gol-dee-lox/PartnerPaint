@@ -1,5 +1,6 @@
 package com.goldeelox.gridserver.service;
 
+import com.fasterxml.jackson.databind.ObjectMapper;
 import com.goldeelox.gridserver.model.Cell;
 import org.springframework.stereotype.Service;
 import redis.clients.jedis.JedisPooled;
@@ -51,10 +52,20 @@ public class RedisService {
         List<String> values = jedis.mget(keys.toArray(new String[0]));
 
         Map<String, String> result = new HashMap<>();
+        ObjectMapper mapper = new ObjectMapper();
+
         for (int i = 0; i < keys.size(); i++) {
             String value = values.get(i);
             if (value != null) {
-                result.put(formatKey(keys.get(i)), value);
+                try {
+                    Map<String, String> parsed = mapper.readValue(value, Map.class);
+                    String color = parsed.get("color");
+                    result.put(formatKey(keys.get(i)), color);
+                } catch (Exception e) {
+                    e.printStackTrace();
+                    // fallback: store raw value if parsing fails
+                    result.put(formatKey(keys.get(i)), value);
+                }
             }
         }
         System.out.println("Redis returned: " + result);

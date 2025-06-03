@@ -14,7 +14,7 @@ public class WebSocketHandlerService implements WebSocketHandler {
         return session.receive()
                 .doOnNext(message -> {
                     String payload = message.getPayloadAsText();
-                    System.out.println("Received: " + payload);
+                    //System.out.println("Received: " + payload);
                 })
                 .then();
     }
