@@ -37,6 +37,7 @@ public class RedisService {
     public void saveCell(Cell cell) {
         String key = getKey(cell.getX(), cell.getY());
         jedis.set(key, cell.getColor());
+        System.out.println("Redis saved: " + key + " -> " + cell.getColor());
     }
 
     public Map<String, String> getCellsInArea(int x1, int y1, int x2, int y2) {
@@ -64,6 +65,6 @@ public class RedisService {
     }
 
     private String formatKey(String fullKey) {
-        return fullKey.replace("cell:", "").replace(":", ",");
+        return fullKey.replace("cell:", "")/*.replace(":", ",")*/;
     }
 }

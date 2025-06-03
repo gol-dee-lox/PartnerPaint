@@ -467,7 +467,7 @@ async function loadChunk(cx, cy) {
         // Transform backend key from "cell:44:25" → "44,25"
         const cleanKey = key.replace("cell:", "").replace(":", ",");
         
-        const valueObj = JSON.parse(data[key]);  // Parse Redis stringified object
+        const valueObj = data[key];  // Parse Redis stringified object
         const color = valueObj.color;
         
         cache.set(cleanKey, color);
