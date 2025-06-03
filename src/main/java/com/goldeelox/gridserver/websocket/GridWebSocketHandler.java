@@ -40,38 +40,49 @@ public class GridWebSocketHandler implements WebSocketHandler {
         });
     }
 
-    @Override
-    public Mono<Void> handle(WebSocketSession session) {
-        //System.out.println("✅ WebSocket handler instance created");
+//  @Override
+//  public Mono<Void> handle(WebSocketSession session) {
+//        //System.out.println("✅ WebSocket handler instance created");
+//
+//        String id = String.valueOf(idCounter.getAndIncrement());
+//        sessions.put(id, session);
+//        System.out.println("✅ Assigned player ID: " + id);
+//
+//        // Combine initial assignment message + ongoing outbound stream
+//        Flux<WebSocketMessage> outbound = Flux.concat(
+//                Mono.just(session.textMessage("{\"type\":\"assignId\",\"id\":\"" + id + "\"}")),
+//                broadcastSink.asFlux().map(session::textMessage)
+//        ).onBackpressureBuffer(Queues.SMALL_BUFFER_SIZE);
+//
+//        Flux<String> receiveFlux = session.receive()
+//                .map(WebSocketMessage::getPayloadAsText)
+//                .doOnNext(message -> {
+//                    //System.out.println("📩 Incoming message for id " + id + ": " + message);
+//                    handleMessage(id, message);
+//                })
+//                .doOnError(e -> e.printStackTrace())
+//                .doFinally(sig -> {
+//                    System.out.println("⚠️ Closing session for id " + id);
+//                    sessions.remove(id);
+//                    players.remove(id);
+//                    broadcastPlayerDisconnect(id);
+//                });
+//
+//        Mono<Void> input = receiveFlux.then();
+//        Mono<Void> output = session.send(outbound);
+//
+//        return Mono.when(input, output);
+    	
+    	@Override
+    	public Mono<Void> handle(WebSocketSession session) {
+    	    String id = String.valueOf(idCounter.getAndIncrement());
+    	    sessions.put(id, session);
+    	    System.out.println("✅ Assigned player ID: " + id);
 
-        String id = String.valueOf(idCounter.getAndIncrement());
-        sessions.put(id, session);
-        System.out.println("✅ Assigned player ID: " + id);
+    	    WebSocketMessage testMessage = session.textMessage("{\"type\":\"testPing\",\"value\":\"helloWorld\"}");
 
-        // Combine initial assignment message + ongoing outbound stream
-        Flux<WebSocketMessage> outbound = Flux.concat(
-                Mono.just(session.textMessage("{\"type\":\"assignId\",\"id\":\"" + id + "\"}")),
-                broadcastSink.asFlux().map(session::textMessage)
-        ).onBackpressureBuffer(Queues.SMALL_BUFFER_SIZE);
-
-        Flux<String> receiveFlux = session.receive()
-                .map(WebSocketMessage::getPayloadAsText)
-                .doOnNext(message -> {
-                    //System.out.println("📩 Incoming message for id " + id + ": " + message);
-                    handleMessage(id, message);
-                })
-                .doOnError(e -> e.printStackTrace())
-                .doFinally(sig -> {
-                    System.out.println("⚠️ Closing session for id " + id);
-                    sessions.remove(id);
-                    players.remove(id);
-                    broadcastPlayerDisconnect(id);
-                });
-
-        Mono<Void> input = receiveFlux.then();
-        Mono<Void> output = session.send(outbound);
-
-        return Mono.when(input, output);
+    	    return session.send(Mono.just(testMessage));
+    	}
     }
 
     private void handleMessage(String id, String message) {
