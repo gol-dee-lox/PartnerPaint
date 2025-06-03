@@ -68,7 +68,10 @@ public class GridWebSocketHandler implements WebSocketHandler {
                     broadcastPlayerDisconnect(id);
                 });
 
-        return session.send(outbound).and(receiveFlux.then());
+        Mono<Void> input = receiveFlux.then();
+        Mono<Void> output = session.send(outbound);
+
+        return Mono.when(input, output);
     }
 
     private void handleMessage(String id, String message) {
