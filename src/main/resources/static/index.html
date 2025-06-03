@@ -158,6 +158,16 @@ socket.onmessage = (event) => {
     if (msg.type === "assignId") {
         myPlayerId = msg.id;
         console.log("Assigned ID:", myPlayerId);
+
+        // Immediately broadcast initial position:
+        if (socket.readyState === WebSocket.OPEN) {
+            socket.send(JSON.stringify({
+                type: "position",
+                username: username,
+                x: currentMouseGrid.x,
+                y: currentMouseGrid.y
+            }));
+        }
     } else if (msg.type === "positionUpdate") {
         players[msg.id] = { username: msg.username, x: msg.x, y: msg.y };
         console.log("Updated position for ID:", msg.id);
