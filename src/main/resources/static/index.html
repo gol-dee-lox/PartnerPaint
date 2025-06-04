@@ -324,15 +324,95 @@ function resize() {
 window.addEventListener('resize', resize);
 resize();
 
+async function eraseCell(gx, gy) {
+    const key = `${gx},${gy}`;
+    cache.delete(key);  // Remove from local cache entirely
+
+    spawnParticles(gx, gy, defaultColor);
+    playPop(200);
+
+    try {
+        const response = await fetch(`${backendUrl}/cell/${gx}/${gy}`, {
+            method: "DELETE"
+        });
+
+        if (!response.ok) {
+            console.error("❌ Backend rejected delete:", response.status, await response.text());
+        }
+    } catch (err) {
+        console.error("❌ Delete fetch failed:", err);
+    }
+
+    if (socket.readyState === WebSocket.OPEN) {
+        socket.send(JSON.stringify({
+            type: "cell",
+            gx: gx,
+            gy: gy,
+            color: null  // Or send `null` to indicate deletion
+        }));
+    }
+
+    fetchAndRender();
+}
+
+async function setCellWhite(gx, gy) {
+    const key = `${gx},${gy}`;
+    const color = "#FFFFFF";
+    cache.set(key, color);
+
+    spawnParticles(gx, gy, color);
+    playPop(600);
+
+    try {
+        const response = await fetch(`${backendUrl}/cell/${gx}/${gy}`, {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({ color: color })
+        });
+
+        if (!response.ok) {
+            console.error("❌ Backend rejected:", response.status, await response.text());
+        }
+    } catch (err) {
+        console.error("❌ Fetch failed:", err);
+    }
+
+    if (socket.readyState === WebSocket.OPEN) {
+        socket.send(JSON.stringify({
+            type: "cell",
+            gx: gx,
+            gy: gy,
+            color: color
+        }));
+    }
+
+    fetchAndRender();
+}
+
 canvas.addEventListener("mousedown", e => {
     if (e.button === 0 || e.button === 2) {
-        paintButton = e.button;  // <-- capture which button was pressed
-        pendingClick = { button: e.button, x: e.offsetX, y: e.offsetY };
-        isDragging = true;
-        dragStart.x = e.clientX;
-        dragStart.y = e.clientY;
-        dragDistance = 0;
-        paintedCells.clear();
+        if (e.shiftKey) {
+            const [gx, gy] = screenToGrid(e.offsetX, e.offsetY);
+
+            if (e.button === 0) {
+                eraseCell(gx, gy);  // left click while shift: erase
+            } else if (e.button === 2) {
+                setCellWhite(gx, gy);  // right click while shift: white
+            }
+
+            pendingClick = null;  // prevent normal modifyCell
+            isDragging = false;
+            return;
+        }
+        else{
+	        paintButton = e.button;
+	        pendingClick = { button: e.button, x: e.offsetX, y: e.offsetY };
+	        isDragging = true;
+	        dragStart.x = e.clientX;
+	        dragStart.y = e.clientY;
+	        dragDistance = 0;
+	        paintedCells.clear();
+        }
     }
 });
 
