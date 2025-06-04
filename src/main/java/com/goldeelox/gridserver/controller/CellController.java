@@ -7,6 +7,7 @@ import com.goldeelox.gridserver.websocket.GridWebSocketHandler;
 import reactor.core.publisher.Mono;
 
 import org.springframework.beans.factory.annotation.Autowired;
+import org.springframework.http.ResponseEntity;
 import org.springframework.web.bind.annotation.*;
 
 import java.util.Map;
@@ -41,6 +42,16 @@ public class CellController {
         String message = String.format("{\"type\":\"cellUpdate\",\"x\":%d,\"y\":%d,\"color\":\"%s\"}", x, y, color);
         websocketHandler.broadcastCellUpdate(message);
         
+        return Mono.empty();
+    }
+    
+    @DeleteMapping("/cell/{x}/{y}")
+    public Mono<Void> deleteCell(@PathVariable("x") int x, @PathVariable("y") int y) {
+        redisService.deleteCell(x, y);
+
+        String message = String.format("{\"type\":\"cellUpdate\",\"x\":%d,\"y\":%d,\"color\":null}", x, y);
+        websocketHandler.broadcastCellUpdate(message);
+
         return Mono.empty();
     }
 }

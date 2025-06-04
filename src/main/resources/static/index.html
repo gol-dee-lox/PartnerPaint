@@ -205,6 +205,10 @@ let pendingClick = null;
 let paintedCells = new Set();
 let shiftDuringDrag = false;
 let ctrlDuringDrag = false;
+
+let rotation = 0; // radians
+let lastTouchAngle = null;
+
 const chunkSize = 20;
 const cache = new Map();
 const particles = [];
@@ -227,6 +231,44 @@ function playPop(frequency) {
     osc.stop(audioCtx.currentTime + 0.15);
 }
 
+function playErase() {
+    const duration = 0.25; // quarter second
+    const sampleRate = audioCtx.sampleRate;
+    const buffer = audioCtx.createBuffer(1, sampleRate * duration, sampleRate);
+    const data = buffer.getChannelData(0);
+
+    // Generate white noise
+    for (let i = 0; i < data.length; i++) {
+        data[i] = Math.random() * 2 - 1;
+    }
+
+    const noise = audioCtx.createBufferSource();
+    noise.buffer = buffer;
+
+    // Randomize frequency slightly (±10%)
+    const baseFreq = 1200;
+    const freqVariation = baseFreq * 0.10;
+    const randomizedFreq = baseFreq + (Math.random() * 2 - 1) * freqVariation;
+
+    // Randomize Q slightly (±10%)
+    const baseQ = 6;
+    const qVariation = baseQ * 0.10;
+    const randomizedQ = baseQ + (Math.random() * 2 - 1) * qVariation;
+
+    const filter = audioCtx.createBiquadFilter();
+    filter.type = "bandpass";
+    filter.frequency.value = randomizedFreq;
+    filter.Q.value = randomizedQ;
+
+    // Gain envelope
+    const gainNode = audioCtx.createGain();
+    gainNode.gain.setValueAtTime(0.0001, audioCtx.currentTime);
+    gainNode.gain.exponentialRampToValueAtTime(0.2, audioCtx.currentTime + 0.05);
+    gainNode.gain.exponentialRampToValueAtTime(0.0001, audioCtx.currentTime + duration);
+
+    noise.connect(filter).connect(gainNode).connect(audioCtx.destination);
+    noise.start();
+}
 function playTeleportSound() {
     const osc = audioCtx.createOscillator();
     const gain = audioCtx.createGain();
@@ -316,7 +358,7 @@ async function eraseCell(gx, gy) {
     cache.delete(key);  // Remove from local cache entirely
 
     spawnParticles(gx, gy, defaultColor);
-    playPop(200);
+    playErase();
 
     try {
         const response = await fetch(`${backendUrl}/cell/${gx}/${gy}`, {
@@ -462,6 +504,92 @@ canvas.addEventListener("mouseup", () => {
     pendingClick = null;
     fetchAndRender();
 });
+
+let lastTouchDistance = null;
+
+
+canvas.addEventListener("touchmove", function(e) {
+    if (e.touches.length === 2) {
+        e.preventDefault();
+        const touch1 = e.touches[0];
+        const touch2 = e.touches[1];
+        const dx = touch2.clientX - touch1.clientX;
+        const dy = touch2.clientY - touch1.clientY;
+        const distance = Math.hypot(dx, dy);
+
+        if (lastTouchDistance) {
+            const delta = distance - lastTouchDistance;
+            const zoomFactor = 1 + (delta / 300);  // sensitivity tuning
+            const newZoom = Math.min(Math.max(zoom * zoomFactor, minZoom), maxZoom);
+
+            const centerX = (touch1.clientX + touch2.clientX) / 2;
+            const centerY = (touch1.clientY + touch2.clientY) / 2;
+
+            const mouseX = (centerX - canvas.getBoundingClientRect().left) / zoom - offsetX;
+            const mouseY = (centerY - canvas.getBoundingClientRect().top) / zoom - offsetY;
+
+            offsetX -= (mouseX * (newZoom - zoom));
+            offsetY -= (mouseY * (newZoom - zoom));
+            zoom = newZoom;
+
+            fetchAndRender();
+        }
+        lastTouchDistance = distance;
+    }
+}, { passive: false });
+
+canvas.addEventListener("touchend", function(e) {
+    if (e.touches.length < 2) {
+        lastTouchDistance = null;
+    }
+});
+
+let tapHoldTimeout = null;
+
+canvas.addEventListener("touchstart", function(e) {
+    if (e.touches.length === 1) {
+        const touch = e.touches[0];
+        const rect = canvas.getBoundingClientRect();
+        const x = touch.clientX - rect.left;
+        const y = touch.clientY - rect.top;
+
+        isDragging = false;
+
+        tapHoldTimeout = setTimeout(() => {
+            isDragging = true;
+            pendingClick = { button: 0, x, y };
+            dragStart.x = touch.clientX;
+            dragStart.y = touch.clientY;
+            dragDistance = 0;
+            paintedCells.clear();
+        }, 150);  // delay before entering drag mode
+    }
+}, { passive: false });
+
+canvas.addEventListener("touchmove", function(e) {
+    if (isDragging) {
+        const touch = e.touches[0];
+        const dx = touch.clientX - dragStart.x;
+        const dy = touch.clientY - dragStart.y;
+        dragDistance += Math.abs(dx) + Math.abs(dy);
+
+        offsetX += dx / zoom;
+        offsetY += dy / zoom;
+
+        dragStart.x = touch.clientX;
+        dragStart.y = touch.clientY;
+
+        fetchAndRender();
+    } else {
+        clearTimeout(tapHoldTimeout);
+    }
+}, { passive: false });
+
+canvas.addEventListener("touchend", function(e) {
+    clearTimeout(tapHoldTimeout);
+    isDragging = false;
+});
+
 canvas.addEventListener("mouseleave", () => { isDragging = false; pendingClick = null; });
 canvas.addEventListener("contextmenu", e => e.preventDefault());
 

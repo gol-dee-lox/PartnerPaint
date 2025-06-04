@@ -40,6 +40,11 @@ public class RedisService {
         jedis.set(key, cell.getColor());
         //System.out.println("Redis saved: " + key + " -> " + cell.getColor());
     }
+    
+    public void deleteCell(int x, int y) {
+        String key = getKey(x, y);
+        jedis.del(key);
+    }
 
  // add ObjectMapper once per class
     private final ObjectMapper objectMapper = new ObjectMapper();
