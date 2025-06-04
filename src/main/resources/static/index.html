@@ -153,7 +153,7 @@ socket.onopen = () => {
 
 socket.onmessage = (event) => {
     const msg = JSON.parse(event.data);
-    console.log("Received WebSocket message:", msg);
+    //console.log("Received WebSocket message:", msg);
 
     if (msg.type === "assignId") {
         myPlayerId = msg.id;
@@ -175,7 +175,7 @@ socket.onmessage = (event) => {
         }
     } else if (msg.type === "positionUpdate") {
         players[msg.id] = { username: msg.username, x: msg.x, y: msg.y };
-        console.log("Updated position for ID:", msg.id);
+        //console.log("Updated position for ID:", msg.id);
     } else if (msg.type === "cell") {
         const { gx, gy, color } = msg;
         const key = `${gx},${gy}`;

@@ -38,7 +38,7 @@ public class RedisService {
     public void saveCell(Cell cell) {
         String key = getKey(cell.getX(), cell.getY());
         jedis.set(key, cell.getColor());
-        System.out.println("Redis saved: " + key + " -> " + cell.getColor());
+        //System.out.println("Redis saved: " + key + " -> " + cell.getColor());
     }
 
  // add ObjectMapper once per class
@@ -68,7 +68,7 @@ public class RedisService {
                 }
             }
         }
-        System.out.println("Redis returned: " + result);
+        //System.out.println("Redis returned: " + result);
         return result;
     }
 
