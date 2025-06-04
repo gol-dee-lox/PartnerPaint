@@ -153,29 +153,15 @@ socket.onopen = () => {
 
 socket.onmessage = (event) => {
     const msg = JSON.parse(event.data);
-    //console.log("Received WebSocket message:", msg);
+    console.log("Received WebSocket message:", msg);
 
     if (msg.type === "assignId") {
         myPlayerId = msg.id;
         console.log("Assigned ID:", myPlayerId);
-
-        const payload = {
-            type: "position",
-            username: username,
-            x: currentMouseGrid.x,
-            y: currentMouseGrid.y
-        };
-
-        console.log("🚀 Sending initial position:", payload);
-
-        if (socket.readyState === WebSocket.OPEN) {
-            socket.send(JSON.stringify(payload));
-        } else {
-            console.warn("Socket not open when attempting to send position");
-        }
     } else if (msg.type === "positionUpdate") {
         players[msg.id] = { username: msg.username, x: msg.x, y: msg.y };
-        //console.log("Updated position for ID:", msg.id);
+        console.log("Received positionUpdate:", msg);
+        console.log("Updated position for ID:", msg.id);
     } else if (msg.type === "cell") {
         const { gx, gy, color } = msg;
         const key = `${gx},${gy}`;
@@ -217,7 +203,8 @@ let dragStart = { x: 0, y: 0 };
 let dragDistance = 0;
 let pendingClick = null;
 let paintedCells = new Set();
-let paintButton = 0;
+let shiftDuringDrag = false;
+let ctrlDuringDrag = false;
 const chunkSize = 20;
 const cache = new Map();
 const particles = [];
@@ -391,34 +378,22 @@ async function setCellWhite(gx, gy) {
 
 canvas.addEventListener("mousedown", e => {
     if (e.button === 0 || e.button === 2) {
-        if (e.shiftKey) {
-            const [gx, gy] = screenToGrid(e.offsetX, e.offsetY);
+        paintButton = e.button;
+        pendingClick = { button: e.button, x: e.offsetX, y: e.offsetY };
+        isDragging = true;
+        dragStart.x = e.clientX;
+        dragStart.y = e.clientY;
+        dragDistance = 0;
+        paintedCells.clear();
 
-            if (e.button === 0) {
-                eraseCell(gx, gy);  // left click while shift: erase
-            } else if (e.button === 2) {
-                setCellWhite(gx, gy);  // right click while shift: white
-            }
-
-            pendingClick = null;  // prevent normal modifyCell
-            isDragging = false;
-            return;
-        }
-        else{
-	        paintButton = e.button;
-	        pendingClick = { button: e.button, x: e.offsetX, y: e.offsetY };
-	        isDragging = true;
-	        dragStart.x = e.clientX;
-	        dragStart.y = e.clientY;
-	        dragDistance = 0;
-	        paintedCells.clear();
-        }
+        shiftDuringDrag = e.shiftKey;
+        ctrlDuringDrag = e.ctrlKey;
     }
 });
 
 canvas.addEventListener("mousemove", e => {
     const [gx, gy] = screenToGrid(e.offsetX, e.offsetY);
-    currentMouseGrid = { x: gx, y: gy }; // track latest position
+    currentMouseGrid = { x: gx, y: gy };
 
     document.getElementById('coordinateDisplay').innerText = `(${gx}, ${gy})`;
 
@@ -427,25 +402,33 @@ canvas.addEventListener("mousemove", e => {
         const dy = e.clientY - dragStart.y;
         dragDistance += Math.abs(dx) + Math.abs(dy);
 
-        if (!e.ctrlKey) {
-            offsetX += dx / zoom;  // ← flip sign back to positive
+        // Only allow viewport panning if neither shift nor ctrl are held
+        if (!shiftDuringDrag && !ctrlDuringDrag) {
+            offsetX += dx / zoom;
             offsetY += dy / zoom;
         }
 
         dragStart.x = e.clientX;
         dragStart.y = e.clientY;
 
-        if (e.ctrlKey) {
-            const cellKey = `${gx},${gy}`;
-            if (!paintedCells.has(cellKey)) {
-                paintedCells.add(cellKey);
+        const cellKey = `${gx},${gy}`;
+        if (!paintedCells.has(cellKey)) {
+            paintedCells.add(cellKey);
+
+            if (shiftDuringDrag) {
+                if (paintButton === 0) {
+                    eraseCell(gx, gy);
+                } else if (paintButton === 2) {
+                    setCellWhite(gx, gy);
+                }
+            } else if (ctrlDuringDrag) {
                 const direction = (paintButton === 2) ? -1 : 1;
                 modifyCell(gx, gy, direction);
             }
         }
     }
 
-    // Send your position to server
+    // Send position update to server
     if (socket && socket.readyState === WebSocket.OPEN) {
         socket.send(JSON.stringify({
             type: "position",
@@ -455,18 +438,30 @@ canvas.addEventListener("mousemove", e => {
         }));
     }
 });
-
 canvas.addEventListener("mouseup", () => {
     isDragging = false;
+
     if (pendingClick && dragDistance < 5) {
         const { button, x, y } = pendingClick;
         const [gx, gy] = screenToGrid(x, y);
-        modifyCell(gx, gy, button === 0 ? 1 : -1);
+
+        if (shiftDuringDrag) {
+            if (button === 0) {
+                eraseCell(gx, gy);
+            } else if (button === 2) {
+                setCellWhite(gx, gy);
+            }
+        } else if (ctrlDuringDrag) {
+            const direction = (button === 2) ? -1 : 1;
+            modifyCell(gx, gy, direction);
+        } else {
+            modifyCell(gx, gy, button === 0 ? 1 : -1);
+        }
     }
+
     pendingClick = null;
     fetchAndRender();
 });
-
 canvas.addEventListener("mouseleave", () => { isDragging = false; pendingClick = null; });
 canvas.addEventListener("contextmenu", e => e.preventDefault());
 
@@ -559,13 +554,8 @@ async function loadChunk(cx, cy) {
     const data = await response.json();
 
     for (const key in data) {
-        // Transform backend key from "cell:44:25" → "44,25"
-        const cleanKey = key.replace("cell:", "").replace(":", ",");
-        
-        const valueObj = data[key];  // Parse Redis stringified object
-        const color = valueObj.color;
-        
-        cache.set(cleanKey, color);
+        const color = data[key];
+        cache.set(key, color);
     }
 }
 
