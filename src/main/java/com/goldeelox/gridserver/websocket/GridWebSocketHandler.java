@@ -16,11 +16,12 @@ public class GridWebSocketHandler implements WebSocketHandler {
     private final ObjectMapper objectMapper = new ObjectMapper();
     private final Map<String, WebSocketSession> sessions = new ConcurrentHashMap<>();
     private final Map<String, PlayerInfo> players = new ConcurrentHashMap<>();
-    private final Sinks.Many<String> broadcastSink = Sinks.many().multicast().directBestEffort();
     private final AtomicLong idCounter = new AtomicLong(1);
+    private final GridWebSocketBroadcaster broadcaster;
 
-    public GridWebSocketHandler() {
-    	System.out.println("✅ WebSocketHandler initialized");
+    public GridWebSocketHandler(GridWebSocketBroadcaster broadcaster) {
+        this.broadcaster = broadcaster;
+        System.out.println("✅ WebSocketHandler initialized");
     }
 
     @Override
@@ -29,11 +30,11 @@ public class GridWebSocketHandler implements WebSocketHandler {
         sessions.put(id, session);
         System.out.println("✅ Assigned player ID: " + id);
 
-        // This is the correct way to attach broadcastSink to this session's outbound stream:
-        Flux<WebSocketMessage> outbound = Flux.concat(
-            Mono.just(session.textMessage("{\"type\":\"assignId\",\"id\":\"" + id + "\"}")),
-            broadcastSink.asFlux().map(session::textMessage)
-        ).onBackpressureBuffer(Queues.SMALL_BUFFER_SIZE);
+        // Register this session to global broadcaster
+        broadcaster.register(session);
+
+        // Send assignId directly on connection
+        Flux<WebSocketMessage> outbound = Mono.just(session.textMessage("{\"type\":\"assignId\",\"id\":\"" + id + "\"}")).flux();
 
         Flux<String> receiveFlux = session.receive()
                 .map(WebSocketMessage::getPayloadAsText)
@@ -73,7 +74,7 @@ public class GridWebSocketHandler implements WebSocketHandler {
                 update.put("y", y);
 
                 String json = objectMapper.writeValueAsString(update);
-                broadcastSink.tryEmitNext(json);
+                broadcaster.broadcast(json);
             }
 
             else if ("cell".equals(type)) {
@@ -88,7 +89,7 @@ public class GridWebSocketHandler implements WebSocketHandler {
                 cellUpdate.put("color", color);
 
                 String json = objectMapper.writeValueAsString(cellUpdate);
-                broadcastSink.tryEmitNext(json);
+                broadcaster.broadcast(json);
             }
 
         } catch (Exception e) {
@@ -102,7 +103,7 @@ public class GridWebSocketHandler implements WebSocketHandler {
             disconnect.put("type", "disconnect");
             disconnect.put("id", id);
             String json = objectMapper.writeValueAsString(disconnect);
-            broadcastSink.tryEmitNext(json);
+            broadcaster.broadcast(json);
         } catch (Exception e) {
             e.printStackTrace();
         }
@@ -118,9 +119,5 @@ public class GridWebSocketHandler implements WebSocketHandler {
             this.x = x;
             this.y = y;
         }
-    }
-
-    public void broadcastCellUpdate(String message) {
-        broadcastSink.tryEmitNext(message);
     }
 }
