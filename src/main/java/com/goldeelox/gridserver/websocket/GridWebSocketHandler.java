@@ -33,8 +33,11 @@ public class GridWebSocketHandler implements WebSocketHandler {
         // Register this session to global broadcaster
         broadcaster.register(session);
 
-        // Send assignId directly on connection
-        Flux<WebSocketMessage> outbound = Mono.just(session.textMessage("{\"type\":\"assignId\",\"id\":\"" + id + "\"}")).flux();
+        // Create outbound stream — initial assignId plus future broadcasts
+        Flux<WebSocketMessage> outbound = Flux.concat(
+            Mono.just(session.textMessage("{\"type\":\"assignId\",\"id\":\"" + id + "\"}")),
+            broadcaster.getBroadcastFlux().map(session::textMessage)
+        ).onBackpressureBuffer(Queues.SMALL_BUFFER_SIZE);
 
         Flux<String> receiveFlux = session.receive()
                 .map(WebSocketMessage::getPayloadAsText)

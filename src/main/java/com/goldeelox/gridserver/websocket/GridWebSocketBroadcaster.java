@@ -2,7 +2,10 @@ package com.goldeelox.gridserver.websocket;
 
 import org.springframework.stereotype.Component;
 import org.springframework.web.reactive.socket.WebSocketSession;
+
+import reactor.core.publisher.Flux;
 import reactor.core.publisher.Mono;
+import reactor.core.publisher.Sinks;
 
 import java.util.Set;
 import java.util.concurrent.ConcurrentHashMap;
@@ -11,6 +14,7 @@ import java.util.concurrent.ConcurrentHashMap;
 public class GridWebSocketBroadcaster {
 
     private final Set<WebSocketSession> sessions = ConcurrentHashMap.newKeySet();
+    private final Sinks.Many<String> sink = Sinks.many().multicast().directBestEffort();
 
     public void register(WebSocketSession session) {
         sessions.add(session);
@@ -18,13 +22,10 @@ public class GridWebSocketBroadcaster {
     }
 
     public void broadcast(String message) {
-        sessions.forEach(session -> 
-            session.send(Mono.just(session.textMessage(message)))
-                .onErrorResume(e -> {
-                    sessions.remove(session);
-                    return Mono.empty();
-                })
-                .subscribe()
-        );
+        sink.tryEmitNext(message);
+    }
+
+    public Flux<String> getBroadcastFlux() {
+        return sink.asFlux();
     }
 }
