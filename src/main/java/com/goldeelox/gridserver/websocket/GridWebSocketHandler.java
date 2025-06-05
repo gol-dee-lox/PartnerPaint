@@ -120,4 +120,8 @@ public class GridWebSocketHandler implements WebSocketHandler {
             this.y = y;
         }
     }
+    
+    public void broadcastCellUpdate(String message) {
+        broadcaster.broadcast(message);
+    }
 }
