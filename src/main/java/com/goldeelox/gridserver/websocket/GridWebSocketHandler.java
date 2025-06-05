@@ -59,6 +59,7 @@ public class GridWebSocketHandler implements WebSocketHandler {
 
             if ("position".equals(type)) {
                 String username = (String) payload.get("username");
+                System.out.println("Position received from id=" + id + ", username=" + username);
                 int x = (int) payload.get("x");
                 int y = (int) payload.get("y");
 

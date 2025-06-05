@@ -80,6 +80,30 @@ function startGame() {
         startGame.hasRun = undefined; // allow retry
         return;
     }
+
+username = document.getElementById("usernameInput").value.trim();
+if (!username) {
+    alert("Please enter a name");
+    startGame.hasRun = undefined;
+    return;
+}
+const [gx, gy] = screenToGrid(mouseX, mouseY);
+console.log("✅ Username set:", username);
+
+// Safety check to confirm WebSocket state
+if (socket.readyState === WebSocket.OPEN) {
+    console.log("✅ WebSocket is open, sending initial position broadcast");
+
+    socket.send(JSON.stringify({
+        type: "position",
+        username: username,
+        x: gx,
+        y: gy
+    }));
+
+} else {
+    console.warn("⚠ WebSocket not open at startGame time. Current state:", socket.readyState);
+}
     
     if (audioCtx.state === 'suspended') {
         audioCtx.resume();
@@ -141,14 +165,9 @@ socket.addEventListener('close', () => {
     //console.warn("⚠️ WebSocket connection closed");
 });
 
-socket.addEventListener('message', (event) => {
-    //console.log("📨 Message received from server:", event.data);
-    // existing logic can go here after
-});
-
 socket.onopen = () => {
-    //console.log("Connected to WebSocket");
-    //socket.send("Hello server!");
+    console.log("Connected to WebSocket");
+    socket.send("Hello server!");
 };
 
 socket.onmessage = (event) => {
@@ -167,6 +186,7 @@ socket.onmessage = (event) => {
         const key = `${gx},${gy}`;
         cache.set(key, color);
         console.log(`Cell update: ${key} -> ${color}`);
+        render();
     } else if (msg.type === "disconnect") {
         delete players[msg.id];
         console.log("Player disconnected:", msg.id);
@@ -186,13 +206,29 @@ const colors = [
 ];
 const defaultColor = "#333333";
 
+// Pre-render grid background tile
+const gridTile = document.createElement('canvas');
+gridTile.width = cellSize;
+gridTile.height = cellSize;
+const gridCtx = gridTile.getContext('2d');
+
+// Fill background
+gridCtx.fillStyle = defaultColor;
+gridCtx.fillRect(0, 0, cellSize, cellSize);
+
+// Draw grid lines
+gridCtx.strokeStyle = "#777";
+gridCtx.strokeRect(0, 0, cellSize, cellSize);
+
 let zoom = 1;
-let minZoom = 0.005;
+let minZoom = 0.2;
 let maxZoom = 2;
 let offsetX = 0;
 let offsetY = 0;
 let targetOffsetX = 0;
 let targetOffsetY = 0;
+let mouseX = 0;
+let mouseY = 0;
 let teleporting = false;
 let teleportNoiseNode = null;
 let teleportGainNode = null;
@@ -347,7 +383,6 @@ function performTeleport() {
 function resize() {
     canvas.width = window.innerWidth;
     canvas.height = window.innerHeight;
-    minZoom = Math.min(window.innerWidth, window.innerHeight) / (cellSize * 100);
     fetchAndRender();
 }
 window.addEventListener('resize', resize);
@@ -355,8 +390,12 @@ resize();
 
 async function eraseCell(gx, gy) {
     const key = `${gx},${gy}`;
-    cache.delete(key);  // Remove from local cache entirely
 
+    if (!cache.has(key) || cache.get(key) == null) {
+        return;
+    }
+
+    cache.delete(key);
     spawnParticles(gx, gy, defaultColor);
     playErase();
 
@@ -377,18 +416,22 @@ async function eraseCell(gx, gy) {
             type: "cell",
             gx: gx,
             gy: gy,
-            color: null  // Or send `null` to indicate deletion
+            color: null
         }));
     }
 
     fetchAndRender();
 }
-
 async function setCellWhite(gx, gy) {
     const key = `${gx},${gy}`;
     const color = "#FFFFFF";
-    cache.set(key, color);
 
+    // Only proceed if this would change the cell
+    if (cache.get(key) === color) {
+        return;
+    }
+
+    cache.set(key, color);
     spawnParticles(gx, gy, color);
     playPop(600);
 
@@ -417,6 +460,10 @@ async function setCellWhite(gx, gy) {
 
     fetchAndRender();
 }
+canvas.addEventListener('mousemove', e => {
+    mouseX = e.clientX;
+    mouseY = e.clientY;
+});
 
 canvas.addEventListener("mousedown", e => {
     if (e.button === 0 || e.button === 2) {
@@ -713,38 +760,91 @@ async function fetchAndRender() {
     await Promise.all(chunkPromises);
 }
 
-function render() {
-    ctx.clearRect(0, 0, canvas.width, canvas.height);
-    
-    const screenLeft = 0;
-    const screenTop = 0;
-    const screenRight = canvas.width;
-    const screenBottom = canvas.height;
+function getAdjustedGridTile() {
+    const minTileSize = 8; // you can experiment with this threshold
 
-    const gxMin = Math.floor((-offsetX) / cellSize);
-    const gyMin = Math.floor((-offsetY) / cellSize);
-    const gxMax = Math.ceil((screenRight / zoom - offsetX) / cellSize);
-    const gyMax = Math.ceil((screenBottom / zoom - offsetY) / cellSize);
-
-    for (let gx = gxMin; gx <= gxMax; gx++) {
-        for (let gy = gyMin; gy <= gyMax; gy++) {
-            const key = `${gx},${gy}`;
-            const color = cache.get(key) || defaultColor;
-            const [sx, sy] = gridToScreen(gx, gy);
-            const size = cellSize * zoom;
-
-            // Skip if entirely offscreen
-            if (sx + size < screenLeft || sx > screenRight || sy + size < screenTop || sy > screenBottom) {
-                continue;
-            }
-
-            ctx.fillStyle = color;
-            ctx.fillRect(sx, sy, size, size);
-            ctx.strokeStyle = "#444";
-            ctx.strokeRect(sx, sy, size, size);
-        }
+    const scaledTileSize = cellSize * zoom;
+    if (scaledTileSize >= minTileSize) {
+        return gridTile;
     }
 
+    const scale = scaledTileSize / cellSize;
+    const adjustedTile = document.createElement('canvas');
+    adjustedTile.width = cellSize * scale;
+    adjustedTile.height = cellSize * scale;
+    const adjCtx = adjustedTile.getContext('2d');
+
+    adjCtx.scale(scale, scale);
+    adjCtx.drawImage(gridTile, 0, 0);
+    return adjustedTile;
+}
+
+function drawGrid() {
+    ctx.save();
+    ctx.strokeStyle = "#555";
+    ctx.lineWidth = 1;
+
+    const scaledCellSize = cellSize * zoom;
+
+    const gxMin = Math.floor((-offsetX) / cellSize);
+    const gxMax = Math.floor((canvas.width / zoom - offsetX) / cellSize);
+    const gyMin = Math.floor((-offsetY) / cellSize);
+    const gyMax = Math.floor((canvas.height / zoom - offsetY) / cellSize);
+
+    ctx.beginPath();
+
+    for (let gx = gxMin; gx <= gxMax; gx++) {
+        const [screenX] = gridToScreen(gx, 0);
+        ctx.moveTo(screenX, 0);
+        ctx.lineTo(screenX, canvas.height);
+    }
+
+    for (let gy = gyMin; gy <= gyMax; gy++) {
+        const [, screenY] = gridToScreen(0, gy);
+        ctx.moveTo(0, screenY);
+        ctx.lineTo(canvas.width, screenY);
+    }
+
+    ctx.lineWidth = 1;
+
+    ctx.stroke();
+    ctx.restore();
+}
+
+function render() {
+    ctx.clearRect(0, 0, canvas.width, canvas.height);
+
+    // Create edge fading mask
+    const gradient = ctx.createRadialGradient(
+        canvas.width / 2, canvas.height / 2, 0,
+        canvas.width / 2, canvas.height / 2, Math.max(canvas.width, canvas.height) / 3
+        );
+
+    gradient.addColorStop(0, "rgba(0,0,0,0)");
+    gradient.addColorStop(1, "rgba(0,0,0,0.2)");
+
+    ctx.fillStyle = gradient;
+    ctx.fillRect(0, 0, canvas.width, canvas.height);
+
+    drawGrid();
+
+    // Then draw only filled cells
+    for (const [key, color] of cache.entries()) {
+        if (color == null) continue;
+
+        const [gx, gy] = key.split(',').map(Number);
+        const [sx, sy] = gridToScreen(gx, gy);
+        const size = cellSize * zoom;
+
+        if (sx + size < 0 || sx > canvas.width || sy + size < 0 || sy > canvas.height) {
+            continue;
+        }
+
+        ctx.fillStyle = color;
+        ctx.fillRect(sx, sy, size, size);
+        ctx.strokeStyle = "#444";
+        ctx.strokeRect(sx, sy, size, size);
+    }
     // Particles (no changes, they're fine)
     for (let i = particles.length - 1; i >= 0; i--) {
         const p = particles[i];
