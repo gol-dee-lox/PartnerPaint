@@ -20,7 +20,7 @@ public class GridWebSocketHandler implements WebSocketHandler {
     private final AtomicLong idCounter = new AtomicLong(1);
 
     public GridWebSocketHandler() {
-        // ✅ NO GLOBAL SUBSCRIBE ANYMORE — fully handled inside each session
+    	System.out.println("✅ WebSocketHandler initialized");
     }
 
     @Override

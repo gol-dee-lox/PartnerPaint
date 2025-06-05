@@ -59,6 +59,7 @@ document.getElementById("coordinateDisplay").addEventListener("click", () => {
 });
 
 let username = "";
+let socket;
 
 let currentMouseGrid = { x: 0, y: 0 };
 let players = {}; // will hold other players' positions
@@ -70,69 +71,67 @@ function toggleAdvancedOptions() {
 }
 
 function startGame() {
-    // Prevent accidental recursion if somehow triggered twice
+	
+	console.log("🔥 startGame() function fired");
     if (typeof startGame.hasRun !== 'undefined') return;
     startGame.hasRun = true;
 
     username = document.getElementById("usernameInput").value.trim();
     if (!username) {
         alert("Please enter a name");
-        startGame.hasRun = undefined; // allow retry
+        startGame.hasRun = undefined;
         return;
     }
 
-username = document.getElementById("usernameInput").value.trim();
-if (!username) {
-    alert("Please enter a name");
-    startGame.hasRun = undefined;
-    return;
-}
-const [gx, gy] = screenToGrid(mouseX, mouseY);
-console.log("✅ Username set:", username);
+    socket = new WebSocket(wsUrl);
 
-// Safety check to confirm WebSocket state
-if (socket.readyState === WebSocket.OPEN) {
-    console.log("✅ WebSocket is open, sending initial position broadcast");
+    socket.addEventListener('open', () => {
+        console.log("✅ WebSocket connection successfully opened");
 
-    socket.send(JSON.stringify({
-        type: "position",
-        username: username,
-        x: gx,
-        y: gy
-    }));
+        const [gx, gy] = screenToGrid(mouseX, mouseY);
+        socket.send(JSON.stringify({
+            type: "position",
+            username: username,
+            x: gx,
+            y: gy
+        }));
+    });
 
-} else {
-    console.warn("⚠ WebSocket not open at startGame time. Current state:", socket.readyState);
-}
-    
-    if (audioCtx.state === 'suspended') {
-        audioCtx.resume();
-    }
+    socket.addEventListener('message', (event) => {
+        console.log("🔧 RAW WebSocket message:", event.data);
+        const msg = JSON.parse(event.data);
+        console.log("Received WebSocket message:", msg);
 
-    // Handle optional teleport coordinates from Advanced Options
-    const startXInput = document.getElementById("startX");
-    const startYInput = document.getElementById("startY");
-    
-    if (startXInput && startYInput) {
-        const sx = startXInput.value.trim();
-        const sy = startYInput.value.trim();
-        if (sx !== "" && sy !== "") {
-            const tx = parseInt(sx);
-            const ty = parseInt(sy);
-
-            // Set teleport input fields so performTeleport uses the same logic
-            document.getElementById("teleportX").value = tx;
-            document.getElementById("teleportY").value = ty;
-
-            performTeleport();
+        if (msg.type === "assignId") {
+            myPlayerId = msg.id;
+            console.log("Assigned ID:", myPlayerId);
+        } else if (msg.type === "positionUpdate") {
+            players[msg.id] = { username: msg.username, x: msg.x, y: msg.y };
+            console.log("Received positionUpdate:", msg);
+            console.log("Updated position for ID:", msg.id);
+        } else if (msg.type === "cell") {
+            const { gx, gy, color } = msg;
+            const key = `${gx},${gy}`;
+            cache.set(key, color);
+            console.log(`Cell update: ${key} -> ${color}`);
+            render();
+        } else if (msg.type === "disconnect") {
+            delete players[msg.id];
+            console.log("Player disconnected:", msg.id);
         }
-    }
+    });
+
+    socket.addEventListener('close', () => {
+        console.warn("⚠️ WebSocket connection closed");
+    });
+
+    socket.addEventListener('error', (error) => {
+        console.error("❌ WebSocket error occurred:", error);
+    });
 
     document.getElementById("welcomeScreen").style.display = "none";
     document.getElementById("grid").style.display = "block";
     document.getElementById("coordinateDisplay").style.display = "block";
-
-    //initGame();
 }
 
 // Allow Enter key submission for name field
@@ -145,57 +144,6 @@ document.getElementById("usernameInput").addEventListener("keydown", function(ev
 <canvas id="grid"></canvas>
 
 <script>
-
-//const backendUrl = window.BACKEND_URL || "http://localhost:8080";
-//const wsUrl = window.WS_URL || "ws://localhost:8080/ws";
-
-//console.log("🌐 Attempting WebSocket connect to:", wsUrl);
-
-let socket = new WebSocket(wsUrl);
-
-socket.addEventListener('open', () => {
-    //console.log("✅ WebSocket connection successfully opened");
-});
-
-socket.addEventListener('error', (error) => {
-    //console.error("❌ WebSocket error occurred:", error);
-});
-
-socket.addEventListener('close', () => {
-    //console.warn("⚠️ WebSocket connection closed");
-});
-
-socket.onopen = () => {
-    console.log("Connected to WebSocket");
-    socket.send("Hello server!");
-};
-
-socket.onmessage = (event) => {
-    const msg = JSON.parse(event.data);
-    console.log("Received WebSocket message:", msg);
-
-    if (msg.type === "assignId") {
-        myPlayerId = msg.id;
-        console.log("Assigned ID:", myPlayerId);
-    } else if (msg.type === "positionUpdate") {
-        players[msg.id] = { username: msg.username, x: msg.x, y: msg.y };
-        console.log("Received positionUpdate:", msg);
-        console.log("Updated position for ID:", msg.id);
-    } else if (msg.type === "cell") {
-        const { gx, gy, color } = msg;
-        const key = `${gx},${gy}`;
-        cache.set(key, color);
-        console.log(`Cell update: ${key} -> ${color}`);
-        render();
-    } else if (msg.type === "disconnect") {
-        delete players[msg.id];
-        console.log("Player disconnected:", msg.id);
-    }
-};
-
-socket.onclose = () => {
-    console.log("WebSocket closed");
-};
 
 const cellSize = 40;
 const colors = [
